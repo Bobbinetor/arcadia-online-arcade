@@ -11,7 +11,7 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/YOUR_USERNAME/arcadia-online-arcade.git
+   git clone https://github.com/bobbinetor/arcadia-online-arcade.git
    cd arcadia-online-arcade
    ```
 
