@@ -475,13 +475,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Community**: Built for gamers, by gamers
 - **Academic Context**: Security-focused software development exercise
 
-## 📞 Support
-
-For support, feature requests, or contributions:
-- 📧 Email: support@arcadia-platform.dev
-- 🐛 Issues: [GitHub Issues](https://github.com/YOUR_USERNAME/arcadia-online-arcade/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/YOUR_USERNAME/arcadia-online-arcade/discussions)
-- 📖 Documentation: [Project Wiki](https://github.com/YOUR_USERNAME/arcadia-online-arcade/wiki)
 
 ---
 
@@ -489,6 +482,6 @@ For support, feature requests, or contributions:
 
 **Built with ❤️ for the gaming community**
 
-[⭐ Star this repo](https://github.com/YOUR_USERNAME/arcadia-online-arcade) | [🍴 Fork it](https://github.com/YOUR_USERNAME/arcadia-online-arcade/fork) | [📖 Read the docs](docs/)
+[⭐ Star this repo](https://github.com/bobbinetor/arcadia-online-arcade) | [🍴 Fork it](https://github.com/bobbinetor/arcadia-online-arcade/fork) | [📖 Read the docs](docs/)
 
 </div>
