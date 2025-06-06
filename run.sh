@@ -111,25 +111,42 @@ check_prerequisites() {
 setup_venv() {
     print_header "🐍 Setting up Python Virtual Environment..."
     
-    if [ ! -d "venv" ]; then
-        print_status "Creating virtual environment..."
-        python3 -m venv venv
-        print_success "Virtual environment created"
+    # Check for existing virtual environments
+    if [ -d "myenv" ]; then
+        print_status "Using existing virtual environment 'myenv'..."
+        VENV_PATH="myenv"
+    elif [ -d "venv" ]; then
+        print_status "Using existing virtual environment 'venv'..."
+        VENV_PATH="venv"
     else
-        print_status "Virtual environment already exists"
+        print_status "Creating new virtual environment..."
+        python3 -m venv myenv
+        VENV_PATH="myenv"
+        print_success "Virtual environment created"
     fi
     
     # Activate virtual environment
     print_status "Activating virtual environment..."
-    source venv/bin/activate
+    source $VENV_PATH/bin/activate
     
-    # Upgrade pip
-    print_status "Upgrading pip..."
-    python -m pip install --upgrade pip
-    
-    # Install dependencies
-    print_status "Installing Python dependencies..."
-    pip install -r requirements.txt
+    # Check if requirements are already installed
+    if ! python -c "import psycopg2, sqlalchemy, jwt" >/dev/null 2>&1; then
+        # Upgrade pip
+        print_status "Upgrading pip..."
+        python -m pip install --upgrade pip
+        
+        # Install system dependencies for psycopg2 if needed
+        if ! python -c "import psycopg2" >/dev/null 2>&1; then
+            print_warning "psycopg2 not found. You may need to install system dependencies:"
+            print_status "sudo apt-get install libpq-dev python3-dev build-essential"
+        fi
+        
+        # Install dependencies
+        print_status "Installing Python dependencies..."
+        pip install -r requirements.txt
+    else
+        print_success "Python dependencies already installed"
+    fi
     
     print_success "Python environment ready"
 }
@@ -143,33 +160,64 @@ start_database() {
         exit 1
     fi
     
-    print_status "Starting PostgreSQL and Redis..."
-    docker-compose up -d postgres redis
+    # Check if containers are already running
+    if docker-compose ps postgres 2>/dev/null | grep -q "Up"; then
+        print_success "PostgreSQL is already running"
+    else
+        print_status "Starting PostgreSQL and Redis..."
+        docker-compose up -d postgres redis
+    fi
     
     # Wait for database to be ready
     print_status "Waiting for database to be ready..."
-    for i in {1..30}; do
+    local retries=0
+    local max_retries=30
+    
+    while [ $retries -lt $max_retries ]; do
         if docker-compose exec -T postgres pg_isready -U arcadia_user -d arcadia >/dev/null 2>&1; then
             print_success "Database is ready"
             break
         fi
-        if [ $i -eq 30 ]; then
+        
+        retries=$((retries + 1))
+        if [ $retries -eq $max_retries ]; then
             print_error "Database failed to start within 30 seconds"
             print_status "Checking database logs..."
             docker-compose logs postgres
             exit 1
         fi
+        
         echo -n "."
         sleep 1
     done
+    
+    # Check if Redis is accessible
+    if docker-compose exec -T redis redis-cli ping >/dev/null 2>&1; then
+        print_success "Redis is ready"
+    else
+        print_warning "Redis may not be ready, but continuing..."
+    fi
 }
 
 # Run tests
 run_tests() {
     print_header "🧪 Running Tests..."
     
-    # Activate virtual environment
-    source venv/bin/activate
+    # Determine and activate virtual environment
+    if [ -d "myenv" ]; then
+        source myenv/bin/activate
+    elif [ -d "venv" ]; then
+        source venv/bin/activate
+    else
+        print_error "No virtual environment found. Please run setup first."
+        exit 1
+    fi
+    
+    # Check if tests directory exists
+    if [ ! -d "tests" ]; then
+        print_warning "Tests directory not found - skipping tests"
+        return 0
+    fi
     
     print_status "Running unit tests..."
     if python -m pytest tests/ -v --tb=short; then
@@ -188,12 +236,24 @@ run_tests() {
 run_security_scan() {
     print_header "🔒 Running Security Scan..."
     
-    # Activate virtual environment
-    source venv/bin/activate
+    # Determine and activate virtual environment
+    if [ -d "myenv" ]; then
+        source myenv/bin/activate
+    elif [ -d "venv" ]; then
+        source venv/bin/activate
+    else
+        print_error "No virtual environment found. Please run setup first."
+        exit 1
+    fi
     
     print_status "Running Bandit security scan..."
     if command_exists bandit; then
-        bandit -r src/ -f txt || print_warning "Security issues found - review output above"
+        # Check if src directory exists
+        if [ -d "src" ]; then
+            bandit -r src/ -f txt || print_warning "Security issues found - review output above"
+        else
+            print_warning "Source directory 'src' not found - skipping security scan"
+        fi
     else
         print_warning "Bandit not installed - skipping security scan"
     fi
@@ -203,10 +263,27 @@ run_security_scan() {
 start_application() {
     print_header "🚀 Starting Arcadia Platform..."
     
-    # Activate virtual environment
-    source venv/bin/activate
+    # Determine and activate virtual environment
+    if [ -d "myenv" ]; then
+        source myenv/bin/activate
+    elif [ -d "venv" ]; then
+        source venv/bin/activate
+    else
+        print_error "No virtual environment found. Please run setup first."
+        exit 1
+    fi
+    
+    # Check if main.py exists
+    if [ ! -f "src/main.py" ]; then
+        print_error "Main application file 'src/main.py' not found"
+        print_status "Available Python files in src/:"
+        find src/ -name "*.py" -type f 2>/dev/null || echo "No Python files found"
+        exit 1
+    fi
     
     print_status "Launching terminal interface..."
+    # Add PYTHONPATH to ensure imports work correctly
+    export PYTHONPATH="${PWD}/src:${PWD}:$PYTHONPATH"
     python src/main.py
 }
 
@@ -214,7 +291,14 @@ start_application() {
 cleanup() {
     print_header "🧹 Cleanup..."
     print_status "Stopping services..."
-    docker-compose down
+    
+    # Only try to stop docker services if docker-compose is available
+    if command_exists docker-compose; then
+        docker-compose down 2>/dev/null || true
+    else
+        print_warning "Docker Compose not available - skipping service cleanup"
+    fi
+    
     print_success "Cleanup complete"
 }
 
@@ -234,6 +318,8 @@ show_usage() {
     echo "  $0                  Full startup with all checks"
     echo "  $0 --quick          Quick startup for development"
     echo "  $0 --test-only      Run tests without starting the app"
+    echo "  $0 --setup-only     Setup environment and dependencies only"
+    echo "  $0 --no-db          Skip database startup (for testing without DB)"
 }
 
 # Parse command line arguments
@@ -282,16 +368,38 @@ main() {
     print_banner
     
     # Set up trap for cleanup on exit
-    trap cleanup EXIT INT TERM
-    
-    # Check prerequisites
+    trap cleanup EXIT INT TERM    # Check prerequisites
     check_prerequisites
+    
+    # Setup environment configuration
+    setup_environment() {
+    print_header "⚙️  Setting up Environment Configuration..."
+    
+    # Check if .env file exists
+    if [ ! -f ".env" ]; then
+        if [ -f ".env.example" ]; then
+            print_status "Creating .env file from .env.example..."
+            cp .env.example .env
+            print_warning "Please review and update the .env file with your configuration"
+        else
+            print_warning ".env file not found. Application will use default settings."
+        fi
+    else
+        print_success "Environment configuration file found"
+    fi
+    
+    # Create logs directory if it doesn't exist
+    if [ ! -d "logs" ]; then
+        mkdir -p logs
+        print_status "Created logs directory"
+    fi
+}
     
     # Setup Python environment
     setup_venv
     
     if [ "$SETUP_ONLY" = true ]; then
-        print_success "Setup complete. Use './run_arcadia.sh' to start the application."
+        print_success "Setup complete. Use './run.sh' to start the application."
         exit 0
     fi
     
