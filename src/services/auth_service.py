@@ -1,3 +1,4 @@
+# filepath: /home/bobbinetor/arcadia-online-arcade/src/services/auth_service.py
 """
 Authentication Service for Arcadia Platform
 Implements secure authentication with JWT tokens, password hashing, and audit logging
